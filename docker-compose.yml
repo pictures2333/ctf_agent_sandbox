@@ -1,0 +1,30 @@
+services:
+  agent-sandbox:
+    build: .
+    user: agent
+    working_dir: /home/agent/challenge
+    privileged: true
+    volumes:
+      - ./sandbox/startup.sh:/startup.sh
+      # mcp
+      - ./mcp:/mcp
+      # codex
+      - ./skills/mcp-terminal-operator:/home/agent/.codex/skills
+      - ~/.codex/auth.json:/home/agent/.codex/auth.json 
+      - ./codex/config.toml:/home/agent/.codex/config.toml
+      # opencode
+      - ./skills/mcp-terminal-operator:/home/agent/.opencode/skills
+      - ~/.local/share/opencode/auth.json:/home/agent/.local/share/opencode/auth.json
+      - ./opencode/opencode.json:/home/agent/.config/opencode/opencode.json
+      # workspace
+      - /home/p23/ctf/midnightflag2026/heap:/home/agent/challenge
+      - ./AGENTS.md:/home/agent/challenge/AGENTS.md
+    ports:
+      - 4096:4096
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - TZ=Asia/Taipei
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    command: /bin/bash /startup.sh

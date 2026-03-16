@@ -1,0 +1,15 @@
+experimental_use_rmcp_client = true
+personality = "pragmatic"
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+
+[mcp_servers.mcp_terminal]
+enabled = true
+url = "http://127.0.0.1:8000/mcp"
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.ghidramcp]
+args = ["/mcp/ghidra_mcp/bridge_mcp_ghidra.py", "--ghidra-server", "http://host.docker.internal:8080"]
+command = "python3"
+enabled = true

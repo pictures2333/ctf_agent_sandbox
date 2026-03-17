@@ -28,6 +28,6 @@ def register_opencode_tool() -> None:
         AgentCliToolSpec(
             name="opencode",
             handler=_tool_opencode,
-            skills_mount_dir="/home/agent/.opencode/skills",
+            skills_mount_dir="/home/agent/.config/opencode/skills",
         )
     )

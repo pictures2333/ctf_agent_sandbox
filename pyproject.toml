@@ -23,6 +23,7 @@ packages = [
     "ctf_agent_sandbox",
     "ctf_agent_sandbox.background_services",
     "ctf_agent_sandbox.agent_cli_tools",
+    "ctf_agent_sandbox.utils",
 ]
 
 [tool.setuptools.package-data]

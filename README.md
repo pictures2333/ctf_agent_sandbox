@@ -63,11 +63,6 @@ from ctf_agent_sandbox import build_image, run_container, stop_container
 
 Template: [config.example.yaml](./config.example.yaml)
 
-Render templates:
-- `templates/Dockerfile.tpl`
-- `templates/startup.sh.tpl`
-- `templates/env-skill.md.tpl`
-
 Main keys:
 - `services`: background services (`name` + `options`)
 - `agent-cli-tools`: tool plugins (`name` + `options`)
@@ -76,3 +71,8 @@ Main keys:
 - `packages`: package groups
 - `custom_install_commands`: custom install commands (`run_as: root|agent`)
 - `startup_script_host_path`: generated runtime startup path (use `.sandbox_generated/...`, keep template files untouched)
+
+Render templates:
+- `templates/Dockerfile.tpl`
+- `templates/startup.sh.tpl`
+- `templates/env-skill.md.tpl`

@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import json
-import re
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-import secrets
 from typing import Any
 
 import docker
-from docker.types import Mount
 
 from .background_services import ensure_builtin_background_services_registered
 from .models import SandboxConfig, parse_config
 from .modules import BuildContext, DEFAULT_PIPELINE
+from .utils.docker_build import consume_build_logs
+from .utils.runtime import (
+    dedupe_list,
+    generate_container_name,
+    load_state,
+    require_str_attr,
+    to_docker_mounts,
+    write_executable_file,
+)
+from .utils.template import render_template
 
 STATE_FILE = Path(__file__).resolve().parent / ".sandbox_state.json"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -52,7 +58,7 @@ def assemble(
     if parsed.workspace_host_path:
         context.volumes.append(f"{parsed.workspace_host_path}:{parsed.workspace_container_path}")
     context.volumes.append(f"{parsed.startup_script_host_path}:/startup.sh")
-    context.volumes = _dedupe_list(context.volumes)
+    context.volumes = dedupe_list(context.volumes)
 
     # Render final text artifacts and runtime options.
     return AssemblyResult(
@@ -120,10 +126,10 @@ def build_image(
             rm=True,
             decode=True,
         )
-        image_id = _consume_build_logs(logs=logs, verbose=verbose)
+        image_id = consume_build_logs(logs=logs, verbose=verbose)
         if not image_id:
             image = client.images.get(image_tag)
-            image_id = _require_str_attr(image, "id", "docker image")
+            image_id = require_str_attr(image, "id", "docker image")
 
     # Write runtime startup script to the configured bind-mount host path.
     _write_runtime_startup_script(parsed.startup_script_host_path, result.startup_script)
@@ -142,7 +148,7 @@ def run_container(
 ) -> str:
     """Run a container from stored state and return container id."""
     # Resolve image id and run options from persisted state.
-    state = _load_state(state_file)
+    state = load_state(state_file)
     image_ref = state["image_id"]
     opts = state["run_params"]
     if not isinstance(image_ref, str) or not image_ref:
@@ -150,16 +156,16 @@ def run_container(
 
     # Start one container with a generated unique name and return only container id.
     client = docker.from_env()
-    container_name = _generate_container_name(opts.get("name_prefix", "agent-sandbox"))
+    container_name = generate_container_name(opts.get("name_prefix", "agent-sandbox"))
     container = client.containers.run(
         image_ref,
         detach=True,
         name=container_name,
         privileged=opts["privileged"],
         command=opts["command"],
-        mounts=_to_docker_mounts(opts["volumes"]),
+        mounts=to_docker_mounts(opts["volumes"]),
     )
-    container_id = _require_str_attr(container, "id", "docker container")
+    container_id = require_str_attr(container, "id", "docker container")
     return container_id
 
 
@@ -215,7 +221,7 @@ def render_dockerfile(context: BuildContext) -> str:
     if context.pip_packages:
         pip_block = "RUN uv pip install --system " + " ".join(sorted(context.pip_packages))
 
-    return _render_template(
+    return render_template(
         DOCKERFILE_TEMPLATE_FILE,
         {
             "PACMAN_BLOCK": pacman_block,
@@ -234,7 +240,7 @@ def render_dockerfile(context: BuildContext) -> str:
 def render_startup_script(context: BuildContext) -> str:
     """Render startup script that launches selected background services."""
     commands = context.startup_commands or ["true"]
-    return _render_template(
+    return render_template(
         STARTUP_SCRIPT_TEMPLATE_FILE,
         {
             "STARTUP_COMMANDS": "\n".join(commands),
@@ -255,148 +261,6 @@ def render_container_options(
     }
 
 
-def _to_docker_mounts(volume_specs: list[str]) -> list[Mount]:
-    out: list[Mount] = []
-    for spec in volume_specs:
-        parts = spec.split(":")
-        if len(parts) < 2:
-            continue
-        # Docker SDK requires absolute host paths for bind mounts.
-        host_path = str(Path(parts[0]).expanduser().resolve())
-        bind_path = parts[1]
-        read_only = len(parts) >= 3 and parts[2] == "ro"
-        out.append(Mount(target=bind_path, source=host_path, type="bind", read_only=read_only))
-    return out
-
-
-def _load_state(state_file: str | Path) -> dict[str, Any]:
-    path = Path(state_file)
-    if not path.exists():
-        raise FileNotFoundError(f"state file not found: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if "image_id" not in payload or "run_params" not in payload:
-        raise ValueError(f"invalid state file: {path}")
-    return payload
-
-
-def _dedupe_list(items: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in items:
-        if item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
-
-
-def _generate_container_name(prefix: str) -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    suffix = secrets.token_hex(4)
-    return f"{prefix}-{ts}-{suffix}"
-
-
-def _require_str_attr(obj: object, attr: str, label: str) -> str:
-    """Read a dynamic SDK attribute and ensure it is a string."""
-    value = getattr(obj, attr, None)
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{label} missing valid `{attr}`")
-    return value
-
-
-def _consume_build_logs(logs: Any, verbose: bool) -> str | None:
-    """Consume Docker build logs, optionally print them, and capture image id."""
-    if logs is None or not hasattr(logs, "__iter__"):
-        return None
-
-    image_id: str | None = None
-    # Read the build stream until completion so Docker build fully finishes.
-    for entry in logs:
-        normalized = _normalize_build_log_entry(entry, echo_raw=verbose)
-        if normalized is None:
-            continue
-        if verbose:
-            _print_build_log_entry(normalized)
-        captured = _extract_image_id_from_log_entry(normalized)
-        if captured:
-            image_id = captured
-        error = _extract_error_from_log_entry(normalized)
-        if error:
-            raise RuntimeError(f"docker build failed: {error}")
-    return image_id
-
-
-def _print_build_log_entry(entry: Any) -> None:
-    """Print one Docker build log entry across dict/bytes/string formats."""
-    normalized = _normalize_build_log_entry(entry, echo_raw=True)
-    if normalized is None:
-        return
-
-    # Raw stream chunks from build output.
-    stream = normalized.get("stream")
-    if isinstance(stream, str) and stream:
-        print(stream, end="", flush=True)
-
-    # Structured status/progress fields for pull/build steps.
-    status = normalized.get("status")
-    progress = normalized.get("progress")
-    if isinstance(status, str) and status:
-        if isinstance(progress, str) and progress:
-            print(f"{status} {progress}", flush=True)
-        else:
-            print(status, flush=True)
-
-    # Build errors and auxiliary metadata.
-    error = normalized.get("error")
-    if isinstance(error, str) and error:
-        print(error, flush=True)
-    aux = normalized.get("aux")
-    if isinstance(aux, dict) and aux:
-        print(aux, flush=True)
-
-
-def _extract_image_id_from_log_entry(entry: Any) -> str | None:
-    """Extract built image id from Docker log entry when available."""
-    normalized = _normalize_build_log_entry(entry, echo_raw=False)
-    if normalized is None:
-        return None
-    aux = normalized.get("aux")
-    if not isinstance(aux, dict):
-        return None
-    image_id = aux.get("ID")
-    return image_id if isinstance(image_id, str) and image_id else None
-
-
-def _extract_error_from_log_entry(entry: Any) -> str | None:
-    """Extract build error message from Docker log entry when present."""
-    normalized = _normalize_build_log_entry(entry, echo_raw=False)
-    if normalized is None:
-        return None
-    error = normalized.get("error")
-    return error if isinstance(error, str) and error else None
-
-
-def _normalize_build_log_entry(entry: Any, echo_raw: bool) -> dict[str, Any] | None:
-    """Normalize Docker SDK log entry into a dictionary payload."""
-    if isinstance(entry, dict):
-        return entry
-    if isinstance(entry, (bytes, bytearray)):
-        text = entry.decode("utf-8", errors="replace").strip()
-    elif isinstance(entry, str):
-        text = entry.strip()
-    else:
-        return None
-    if not text:
-        return None
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        if echo_raw:
-            print(text, flush=True)
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
 def _prepare_assembly_config(config: SandboxConfig | dict[str, Any]) -> SandboxConfig:
     """Normalize config and apply generated sandbox environment skill path."""
     parsed = parse_config(config)
@@ -408,10 +272,7 @@ def _prepare_assembly_config(config: SandboxConfig | dict[str, Any]) -> SandboxC
 
 def _write_runtime_startup_script(host_path: str, content: str) -> None:
     """Write generated runtime startup script to configured host bind path."""
-    target = Path(host_path).expanduser().resolve()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
-    target.chmod(0o755)
+    write_executable_file(host_path, content)
 
 
 def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
@@ -467,7 +328,7 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
     tool_text = "\n".join(tool_sections) if tool_sections else "## name: agent-cli-tool\n- (none)"
 
     # Emit final markdown content from skill template.
-    content = _render_template(
+    content = render_template(
         ENV_SKILL_TEMPLATE_FILE,
         {
             "TIMEZONE": config.timezone,
@@ -482,18 +343,3 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
     )
     skill_file.write_text(content, encoding="utf-8")
     return str(skill_dir)
-
-
-def _render_template(template_path: Path, values: dict[str, str]) -> str:
-    """Render a template file by replacing `{{KEY}}` placeholders."""
-    # Load template source from repository templates directory.
-    template = template_path.read_text(encoding="utf-8")
-    # Replace all supported placeholders with rendered block text.
-    for key, value in values.items():
-        template = template.replace(f"{{{{{key}}}}}", value)
-    # Fail fast if any placeholder key was left unresolved.
-    unresolved = re.findall(r"\{\{[A-Z0-9_]+\}\}", template)
-    if unresolved:
-        missing = ", ".join(sorted(set(unresolved)))
-        raise ValueError(f"unresolved template placeholders in {template_path.name}: {missing}")
-    return template

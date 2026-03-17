@@ -35,6 +35,7 @@
   - `mcp_terminal.py`
   - `__init__.py`（bootstrap）
 - `models.py` 放 Pydantic models（`SandboxConfig` 等）。
+- `utils/` 放共用輔助函式（template rendering、docker build log parsing、runtime helpers）。
 - `templates/` 放動態渲染模板（Dockerfile/startup.sh/env skill）。
 - `skills/` 放內建或共用 skill。
 - `.sandbox_generated/` 放自動生成產物（已 gitignore）。
@@ -79,6 +80,8 @@
 - service 可調參數一律走 `service_options[service_name]`。
 - tool 可調參數一律走 `agent-cli-tools[].options`。
 - agent CLI tool 的 auth/config/prompt 檔名不得在程式中寫死預設值，必須由 `agent-cli-tools[].options` 提供。
+- 編寫 commit message 前必須先檢查 `git diff`，commit message 必須使用 conventional commit style。
+- 每個程式檔案需保持單一職責；可重用 helper function 一律移到 `utils/` 統一管理。
 - `prompt_file` 必須由 agent CLI tool plugin 決定掛載目標檔名，不可在核心硬編碼。
 - 同一份 `prompt_file` 需要可同時掛載到多個工具目標檔名（例如 `AGENTS.md`、`GEMINI.md`）。
 - state 檔只能包含：

@@ -58,10 +58,16 @@
 - 寫程式時必須加英文註解，並用註解分隔主要 code block（初始化、轉換、分派、輸出等區段）。
 
 ## Testing Guidelines
-- 本專案目前沒有完整 pytest 測試；至少要做：
+- 所有測試一律放在 `test/` 目錄下，使用 `pytest`。
+- 原則上每個對外或可重用的 function 都要有對應測試（正常路徑 + 失敗路徑至少其一）。
+- 測試命名規則：
+  - 檔名：`test_<module>.py`
+  - 函式：`test_<behavior>()`
+- Docker SDK、檔案系統、外部程序等副作用必須 mock/stub，避免測試依賴真實環境。
+- 新增或修改 API/CLI/registry/plugin 行為時，必須同步更新或新增對應測試。
+- 交付前至少執行：
+  - `uv run pytest -q`
   - `python -m compileall -q .`
-  - 基本 smoke 驗證（組裝流程能跑）
-- 若新增關鍵流程，請補最小測試或最小可重現驗證步驟。
 
 ## Security & Configuration Tips
 - 不要把 token / auth secrets 寫死在程式內。
@@ -107,8 +113,9 @@
 1. 是否破壞層次邊界（modules / registry / plugins）？
 2. 是否把 service 邏輯寫回核心？
 3. state 結構是否仍只有 `image_id` + `run_params`？
-4. `python -m compileall -q .` 是否通過？
-5. `README.md` / `config.example.yaml` 是否同步更新？
+4. `uv run pytest -q` 是否通過？
+5. `python -m compileall -q .` 是否通過？
+6. `README.md` / `config.example.yaml` 是否同步更新？
 
 ## Misc
 - 在執行任何指令前，先重新讀取：

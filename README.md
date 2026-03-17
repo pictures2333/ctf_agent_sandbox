@@ -72,7 +72,7 @@ Main keys:
 - `custom_install_commands`: custom install commands (`run_as: root|agent`)
 - `startup_script_host_path`: generated runtime startup path (use `.sandbox_generated/...`, keep template files untouched)
 
-Render templates:
+## Templates
 - `templates/Dockerfile.tpl`
 - `templates/startup.sh.tpl`
 - `templates/env-skill.md.tpl`

@@ -35,6 +35,7 @@
   - `mcp_terminal.py`
   - `__init__.py`（bootstrap）
 - `models.py` 放 Pydantic models（`SandboxConfig` 等）。
+- `templates/` 放動態渲染模板（Dockerfile/startup.sh/env skill）。
 - `skills/` 放內建或共用 skill。
 - `.sandbox_generated/` 放自動生成產物（已 gitignore）。
 - `config.example.yaml` 為設定範例。

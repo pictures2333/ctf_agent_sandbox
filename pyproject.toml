@@ -25,5 +25,8 @@ packages = [
     "ctf_agent_sandbox.agent_cli_tools",
 ]
 
+[tool.setuptools.package-data]
+ctf_agent_sandbox = ["templates/*.tpl"]
+
 [tool.uv]
 package = true

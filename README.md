@@ -63,6 +63,11 @@ from ctf_agent_sandbox import build_image, run_container, stop_container
 
 Template: [config.example.yaml](./config.example.yaml)
 
+Render templates:
+- `templates/Dockerfile.tpl`
+- `templates/startup.sh.tpl`
+- `templates/env-skill.md.tpl`
+
 Main keys:
 - `services`: background services (`name` + `options`)
 - `agent-cli-tools`: tool plugins (`name` + `options`)

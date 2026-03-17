@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,12 +12,17 @@ import secrets
 from typing import Any
 
 import docker
+from docker.types import Mount
 
 from .background_services import ensure_builtin_background_services_registered
 from .models import SandboxConfig, parse_config
 from .modules import BuildContext, DEFAULT_PIPELINE
 
 STATE_FILE = Path(__file__).resolve().parent / ".sandbox_state.json"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+DOCKERFILE_TEMPLATE_FILE = TEMPLATE_DIR / "Dockerfile.tpl"
+STARTUP_SCRIPT_TEMPLATE_FILE = TEMPLATE_DIR / "startup.sh.tpl"
+ENV_SKILL_TEMPLATE_FILE = TEMPLATE_DIR / "env-skill.md.tpl"
 
 
 @dataclass
@@ -151,7 +157,7 @@ def run_container(
         name=container_name,
         privileged=opts["privileged"],
         command=opts["command"],
-        volumes=_to_docker_volume_map(opts["volumes"]),
+        mounts=_to_docker_mounts(opts["volumes"]),
     )
     container_id = _require_str_attr(container, "id", "docker container")
     return container_id
@@ -168,81 +174,71 @@ def stop_container(container_id: str) -> None:
 def render_dockerfile(context: BuildContext) -> str:
     """Render Dockerfile text from accumulated context state."""
     pacman = " \\\n    ".join(sorted(context.pacman_packages))
-    out: list[str] = ["FROM archlinux:latest", ""]
-
-    # Base system packages.
+    # Build dynamic template blocks from current context.
+    pacman_block = ""
     if pacman:
-        out.extend(
+        pacman_block = "\n".join(
             [
                 "RUN pacman -Syu --noconfirm \\",
                 f"    {pacman}",
-                "",
             ]
         )
-
-    # Create runtime user and configure sudo policy.
-    out.extend(
-        [
-            "RUN useradd -m agent && usermod -aG wheel,docker agent",
-            "RUN printf '%s\\n' 'Defaults env_reset' 'root ALL=(ALL:ALL) ALL' '%wheel ALL=(ALL:ALL) NOPASSWD:ALL' > /etc/sudoers && chmod 440 /etc/sudoers",
-            "",
-        ]
-    )
-
-    # Static file copies and environment variables.
-    for src, dst in context.copy_files:
-        out.append(f"COPY {src} {dst}")
-
-    for key, value in context.env.items():
-        out.append(f"ENV {key}={value}")
-
-    # Root-phase custom/setup commands.
+    copy_block = "\n".join(f"COPY {src} {dst}" for src, dst in context.copy_files)
+    env_block = "\n".join(f"ENV {key}={value}" for key, value in context.env.items())
+    root_commands_block = ""
     if context.root_commands:
-        out.append("RUN " + " && \\\n    ".join(context.root_commands))
-
-    # Switch to non-root user for user-level installs.
-    out.extend(["", "USER agent"])
-
-    # Agent-phase custom/setup commands.
+        root_commands_block = "RUN " + " && \\\n    ".join(context.root_commands)
+    agent_commands_block = ""
     if context.agent_commands:
-        out.append("RUN " + " && \\\n    ".join(context.agent_commands))
-
-    # AUR packages via yay.
+        agent_commands_block = "RUN " + " && \\\n    ".join(context.agent_commands)
+    yay_block = ""
     if context.yay_packages:
-        out.extend(
+        yay_block = "\n".join(
             [
                 "RUN cd ~ && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si --noconfirm",
                 "RUN yay -Syy --noconfirm --mflags \"--nocheck\" " + " ".join(sorted(context.yay_packages)),
             ]
         )
-
-    # Global npm packages.
+    npm_block = ""
     if context.npm_packages:
-        out.append("RUN sudo npm install -g " + " ".join(sorted(context.npm_packages)))
-
-    # Ruby gems require root-level install path.
+        npm_block = "RUN sudo npm install -g " + " ".join(sorted(context.npm_packages))
+    gem_block = ""
     if context.gem_packages:
-        out.append("USER root")
-        out.append("RUN gem install " + " ".join(sorted(context.gem_packages)) + " --no-user-install")
-        out.append("USER agent")
-
-    # Python packages installed with uv pip.
+        gem_block = "\n".join(
+            [
+                "USER root",
+                "RUN gem install " + " ".join(sorted(context.gem_packages)) + " --no-user-install",
+                "USER agent",
+            ]
+        )
+    pip_block = ""
     if context.pip_packages:
-        out.append("RUN uv pip install --system " + " ".join(sorted(context.pip_packages)))
+        pip_block = "RUN uv pip install --system " + " ".join(sorted(context.pip_packages))
 
-    # Final workspace location.
-    out.extend(["WORKDIR /home/agent/challenge", ""])
-    return "\n".join(out)
+    return _render_template(
+        DOCKERFILE_TEMPLATE_FILE,
+        {
+            "PACMAN_BLOCK": pacman_block,
+            "COPY_BLOCK": copy_block,
+            "ENV_BLOCK": env_block,
+            "ROOT_COMMANDS_BLOCK": root_commands_block,
+            "AGENT_COMMANDS_BLOCK": agent_commands_block,
+            "YAY_BLOCK": yay_block,
+            "NPM_BLOCK": npm_block,
+            "GEM_BLOCK": gem_block,
+            "PIP_BLOCK": pip_block,
+        },
+    )
 
 
 def render_startup_script(context: BuildContext) -> str:
     """Render startup script that launches selected background services."""
     commands = context.startup_commands or ["true"]
-    return (
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n\n"
-        f"{'\n'.join(commands)}\n"
-        "tail -f /dev/null\n"
+    return _render_template(
+        STARTUP_SCRIPT_TEMPLATE_FILE,
+        {
+            "STARTUP_COMMANDS": "\n".join(commands),
+        },
     )
 
 
@@ -259,8 +255,8 @@ def render_container_options(
     }
 
 
-def _to_docker_volume_map(volume_specs: list[str]) -> dict[str, dict[str, str]]:
-    out: dict[str, dict[str, str]] = {}
+def _to_docker_mounts(volume_specs: list[str]) -> list[Mount]:
+    out: list[Mount] = []
     for spec in volume_specs:
         parts = spec.split(":")
         if len(parts) < 2:
@@ -268,8 +264,8 @@ def _to_docker_volume_map(volume_specs: list[str]) -> dict[str, dict[str, str]]:
         # Docker SDK requires absolute host paths for bind mounts.
         host_path = str(Path(parts[0]).expanduser().resolve())
         bind_path = parts[1]
-        mode = "ro" if len(parts) >= 3 and parts[2] == "ro" else "rw"
-        out[host_path] = {"bind": bind_path, "mode": mode}
+        read_only = len(parts) >= 3 and parts[2] == "ro"
+        out.append(Mount(target=bind_path, source=host_path, type="bind", read_only=read_only))
     return out
 
 
@@ -316,7 +312,7 @@ def _consume_build_logs(logs: Any, verbose: bool) -> str | None:
     image_id: str | None = None
     # Read the build stream until completion so Docker build fully finishes.
     for entry in logs:
-        normalized = _normalize_build_log_entry(entry)
+        normalized = _normalize_build_log_entry(entry, echo_raw=verbose)
         if normalized is None:
             continue
         if verbose:
@@ -332,7 +328,7 @@ def _consume_build_logs(logs: Any, verbose: bool) -> str | None:
 
 def _print_build_log_entry(entry: Any) -> None:
     """Print one Docker build log entry across dict/bytes/string formats."""
-    normalized = _normalize_build_log_entry(entry)
+    normalized = _normalize_build_log_entry(entry, echo_raw=True)
     if normalized is None:
         return
 
@@ -361,7 +357,7 @@ def _print_build_log_entry(entry: Any) -> None:
 
 def _extract_image_id_from_log_entry(entry: Any) -> str | None:
     """Extract built image id from Docker log entry when available."""
-    normalized = _normalize_build_log_entry(entry)
+    normalized = _normalize_build_log_entry(entry, echo_raw=False)
     if normalized is None:
         return None
     aux = normalized.get("aux")
@@ -373,14 +369,14 @@ def _extract_image_id_from_log_entry(entry: Any) -> str | None:
 
 def _extract_error_from_log_entry(entry: Any) -> str | None:
     """Extract build error message from Docker log entry when present."""
-    normalized = _normalize_build_log_entry(entry)
+    normalized = _normalize_build_log_entry(entry, echo_raw=False)
     if normalized is None:
         return None
     error = normalized.get("error")
     return error if isinstance(error, str) and error else None
 
 
-def _normalize_build_log_entry(entry: Any) -> dict[str, Any] | None:
+def _normalize_build_log_entry(entry: Any, echo_raw: bool) -> dict[str, Any] | None:
     """Normalize Docker SDK log entry into a dictionary payload."""
     if isinstance(entry, dict):
         return entry
@@ -395,7 +391,8 @@ def _normalize_build_log_entry(entry: Any) -> dict[str, Any] | None:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        print(text, flush=True)
+        if echo_raw:
+            print(text, flush=True)
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -469,36 +466,34 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
             tool_sections.append("- options: (none)")
     tool_text = "\n".join(tool_sections) if tool_sections else "## name: agent-cli-tool\n- (none)"
 
-    # Emit final markdown content.
-    content = "\n".join(
-        [
-            "---",
-            "name: sandbox-environment-hint",
-            "description: Auto-generated sandbox environment summary. Use this to understand installed tools and service topology before operating.",
-            "---",
-            "",
-            "# Sandbox Environment Hint",
-            "",
-            "## Runtime Summary",
-            f"- timezone: {config.timezone}",
-            f"- locale: {config.locale.main}",
-            f"- services: {services}",
-            f"- agent_cli_tools: {tools}",
-            f"- workspace: {config.workspace_container_path}",
-            "",
-            "## Agent CLI Tools",
-            tool_text,
-            "",
-            "## Built-in Notes",
-            "- This skill is generated automatically during `build_image`.",
-            "- Service-specific skills are mounted only when their service plugin is enabled.",
-            "",
-            "## Background Services",
-            service_text,
-            "",
-            package_text,
-            "",
-        ]
+    # Emit final markdown content from skill template.
+    content = _render_template(
+        ENV_SKILL_TEMPLATE_FILE,
+        {
+            "TIMEZONE": config.timezone,
+            "LOCALE": config.locale.main,
+            "SERVICES": services,
+            "AGENT_CLI_TOOLS": tools,
+            "WORKSPACE": config.workspace_container_path,
+            "TOOL_SECTION": tool_text,
+            "SERVICE_SECTION": service_text,
+            "PACKAGE_SECTION": package_text,
+        },
     )
     skill_file.write_text(content, encoding="utf-8")
     return str(skill_dir)
+
+
+def _render_template(template_path: Path, values: dict[str, str]) -> str:
+    """Render a template file by replacing `{{KEY}}` placeholders."""
+    # Load template source from repository templates directory.
+    template = template_path.read_text(encoding="utf-8")
+    # Replace all supported placeholders with rendered block text.
+    for key, value in values.items():
+        template = template.replace(f"{{{{{key}}}}}", value)
+    # Fail fast if any placeholder key was left unresolved.
+    unresolved = re.findall(r"\{\{[A-Z0-9_]+\}\}", template)
+    if unresolved:
+        missing = ", ".join(sorted(set(unresolved)))
+        raise ValueError(f"unresolved template placeholders in {template_path.name}: {missing}")
+    return template

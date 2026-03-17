@@ -29,9 +29,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CTF sandbox assembler CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    assemble_parser = subparsers.add_parser("assemble", help="Generate Dockerfile/startup script")
+    assemble_parser = subparsers.add_parser("assemble", help="Generate Dockerfile/startup/state template")
     assemble_parser.add_argument("--config", default="config.yaml", help="Path to YAML config object")
     assemble_parser.add_argument("--output-dir", default=".", help="Where to write generated files")
+    assemble_parser.add_argument(
+        "--state-file",
+        default=str(STATE_FILE),
+        help="Path to write state file template (image_id + run_params)",
+    )
 
     build_parser = subparsers.add_parser("build-image", help="Build image and persist package state file")
     build_parser.add_argument("--config", default="config.yaml", help="Path to YAML config object")
@@ -57,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "assemble":
         config = _load_config(args.config)
-        assemble_and_write(config, output_dir=args.output_dir)
+        assemble_and_write(config, output_dir=args.output_dir, state_file=args.state_file)
         return 0
 
     if args.command == "build-image":

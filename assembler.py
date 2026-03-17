@@ -59,9 +59,17 @@ def assemble(
 def assemble_and_write(
     config: SandboxConfig | dict[str, Any],
     output_dir: str | Path = ".",
+    state_file: str | Path = STATE_FILE,
 ) -> AssemblyResult:
-    """Assemble artifacts and write them to disk under `output_dir`."""
-    result = assemble(config=config)
+    """Assemble full artifacts and write files/state without building image."""
+    # Parse config and ensure the auto-generated sandbox hint skill exists.
+    parsed = parse_config(config)
+    generated_skill_path = _generate_sandbox_env_skill(parsed)
+    if generated_skill_path:
+        parsed.sandbox_env_skill_path = generated_skill_path
+    result = assemble(config=parsed)
+
+    # Write generated Docker build artifacts to target output directory.
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +78,13 @@ def assemble_and_write(
     startup_path.parent.mkdir(parents=True, exist_ok=True)
     startup_path.write_text(result.startup_script, encoding="utf-8")
     startup_path.chmod(0o755)
+
+    # Write state template for downstream runtime flow (image not built yet).
+    payload = {
+        "image_id": None,
+        "run_params": result.container_options,
+    }
+    Path(state_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return result
 
 
@@ -118,6 +133,8 @@ def run_container(
     state = _load_state(state_file)
     image_ref = state["image_id"]
     opts = state["run_params"]
+    if not isinstance(image_ref, str) or not image_ref:
+        raise ValueError("state file has no built image_id; run build-image first")
 
     # Start one container with a generated unique name and return only container id.
     client = docker.from_env()

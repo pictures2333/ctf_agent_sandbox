@@ -12,8 +12,10 @@ _LOADED = False
 def ensure_builtin_agent_cli_tools_registered() -> None:
     """Register built-in agent CLI tool plugins once."""
     global _LOADED
+    # Guard against duplicate registration side effects.
     if _LOADED:
         return
+    # Register built-in tool plugins.
     register_codex_tool()
     register_gemini_tool()
     register_opencode_tool()

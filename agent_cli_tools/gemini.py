@@ -10,6 +10,7 @@ from .registry import AgentCliToolSpec, register_agent_cli_tool
 
 def _tool_gemini(config: SandboxConfig, options: dict[str, str], context: Any) -> None:
     _ = config
+    # Install Gemini CLI package.
     context.npm_packages.add("@google/gemini-cli")
 
     # Mount auth/config only when explicitly configured by the caller.
@@ -22,6 +23,7 @@ def _tool_gemini(config: SandboxConfig, options: dict[str, str], context: Any) -
 
 
 def register_gemini_tool() -> None:
+    # Register Gemini plugin mount conventions and handler.
     register_agent_cli_tool(
         AgentCliToolSpec(
             name="gemini",

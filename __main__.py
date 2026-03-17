@@ -2,4 +2,5 @@
 
 from .cli import main
 
+# Delegate module execution to the CLI entrypoint.
 raise SystemExit(main())

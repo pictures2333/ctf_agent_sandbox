@@ -10,6 +10,7 @@ from .registry import AgentCliToolSpec, register_agent_cli_tool
 
 def _tool_codex(config: SandboxConfig, options: dict[str, str], context: Any) -> None:
     _ = config
+    # Install Codex CLI package.
     context.npm_packages.add("@openai/codex")
 
     # Mount auth/config only when explicitly configured by the caller.
@@ -22,6 +23,7 @@ def _tool_codex(config: SandboxConfig, options: dict[str, str], context: Any) ->
 
 
 def register_codex_tool() -> None:
+    # Register Codex plugin mount conventions and handler.
     register_agent_cli_tool(
         AgentCliToolSpec(
             name="codex",

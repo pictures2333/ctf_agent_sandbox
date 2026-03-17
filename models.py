@@ -49,8 +49,10 @@ class CustomInstallCommand(BaseModel):
 class SandboxConfig(BaseModel):
     """Single source-of-truth object consumed by the assembler pipeline."""
 
+    # Allow alias-based input keys such as `agent-cli-tools`.
     model_config = ConfigDict(populate_by_name=True)
 
+    # Runtime and tool/service orchestration settings.
     timezone: str = "Asia/Taipei"
     locale: LocaleConfig = Field(default_factory=LocaleConfig)
     services: list[ServiceConfig] = Field(default_factory=list)
@@ -61,6 +63,7 @@ class SandboxConfig(BaseModel):
     skills: list[str] = Field(default_factory=list)
     sandbox_env_skill_path: str | None = "./.sandbox_generated/skills/sandbox-environment-hint"
 
+    # Image/runtime path and naming settings.
     image_name: str = "agent-sandbox"
     container_name_prefix: str = "agent-sandbox"
     workspace_host_path: str | None = None
@@ -71,6 +74,7 @@ class SandboxConfig(BaseModel):
     @classmethod
     def _normalize_skills(cls, value: Any) -> list[str]:
         """Accept both a single string and a list for `skills`."""
+        # Normalize one-or-many skill entries into a list of strings.
         if value is None:
             return []
         if isinstance(value, str):
@@ -83,6 +87,7 @@ class SandboxConfig(BaseModel):
     @classmethod
     def _normalize_services(cls, value: Any) -> list[dict[str, Any]]:
         """Accept both legacy list[str] and list[{name, options}] formats."""
+        # Normalize service entries to object form: {name, options}.
         if value is None:
             return []
         if not isinstance(value, list):
@@ -107,6 +112,7 @@ class SandboxConfig(BaseModel):
     @classmethod
     def _normalize_agent_cli_tools(cls, value: Any) -> list[dict[str, Any]]:
         """Accept both legacy list[str] and list[{name, options}] formats."""
+        # Normalize tool entries to object form: {name, options}.
         if value is None:
             return []
         if not isinstance(value, list):
@@ -131,6 +137,7 @@ class SandboxConfig(BaseModel):
     @classmethod
     def _normalize_custom_install_commands(cls, value: Any) -> list[dict[str, str]]:
         """Accept list[str] and list[{command, run_as}] for custom commands."""
+        # Normalize custom install commands into explicit {command, run_as} objects.
         if value is None:
             return []
         if not isinstance(value, list):

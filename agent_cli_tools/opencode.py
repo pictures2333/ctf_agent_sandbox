@@ -10,6 +10,7 @@ from .registry import AgentCliToolSpec, register_agent_cli_tool
 
 def _tool_opencode(config: SandboxConfig, options: dict[str, str], context: Any) -> None:
     _ = config
+    # Install OpenCode CLI via upstream install script.
     context.agent_commands.append("curl -fsSL https://opencode.ai/install | bash")
 
     # Mount auth/config only when explicitly configured by the caller.
@@ -22,6 +23,7 @@ def _tool_opencode(config: SandboxConfig, options: dict[str, str], context: Any)
 
 
 def register_opencode_tool() -> None:
+    # Register OpenCode plugin mount conventions and handler.
     register_agent_cli_tool(
         AgentCliToolSpec(
             name="opencode",

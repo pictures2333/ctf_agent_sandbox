@@ -73,6 +73,11 @@ Main keys:
 - `startup_script_host_path`: generated runtime startup path (use `.sandbox_generated/...`, keep template files untouched)
 
 ## Templates
-- `templates/Dockerfile.tpl`
-- `templates/startup.sh.tpl`
-- `templates/env-skill.md.tpl`
+- `templates/` only stores source templates. Do not edit generated files as templates.
+- `templates/Dockerfile.tpl`: base template for rendered `Dockerfile`.
+- `templates/startup.sh.tpl`: base template for rendered runtime startup script.
+- `templates/env-skill.md.tpl`: base template for auto-generated sandbox environment skill.
+- Rendered outputs are written to:
+  - `assemble --output-dir ...`: `<output-dir>/Dockerfile`, `<output-dir>/script/startup.sh`
+  - runtime bind path: `startup_script_host_path` (default `.sandbox_generated/script/startup.sh`)
+  - generated skill path: `sandbox_env_skill_path` (default `.sandbox_generated/skills/sandbox-environment-hint/SKILL.md`)

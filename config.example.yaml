@@ -29,6 +29,11 @@ packages:
       - seccomp-tools
     npm: []
     pip: []
+custom_install_commands:
+  - command: npm install -g pnpm
+    run_as: root
+  - command: go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+    run_as: agent
 prompt_file: ./prompt/sandbox.md
 skills: []
 sandbox_env_skill_path: ./.sandbox_generated/skills/sandbox-environment-hint

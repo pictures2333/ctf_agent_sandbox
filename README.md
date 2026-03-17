@@ -78,6 +78,7 @@ Key sections:
 - background service plugins are managed under `background_services/`
 - `ai-cli-tools`: `codex`, `gemini`, `opencode`
 - `packages`: grouped by `name`
+- `custom_install_commands`: extra install commands with `run_as: root|agent`
 - tool auth/config host paths (default `~/.xxx`)
 - workspace/image paths and `container_name_prefix` (runtime generates unique container names)
 

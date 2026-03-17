@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -32,6 +32,13 @@ class ServiceConfig(BaseModel):
     options: dict[str, str] = Field(default_factory=dict)
 
 
+class CustomInstallCommand(BaseModel):
+    """One custom install command with explicit execution user."""
+
+    command: str
+    run_as: Literal["root", "agent"] = "agent"
+
+
 class SandboxConfig(BaseModel):
     """Single source-of-truth object consumed by the assembler pipeline."""
 
@@ -42,6 +49,7 @@ class SandboxConfig(BaseModel):
     services: list[ServiceConfig] = Field(default_factory=list)
     ai_cli_tools: list[str] = Field(default_factory=list, alias="ai-cli-tools")
     packages: list[PackageGroup] = Field(default_factory=list)
+    custom_install_commands: list[CustomInstallCommand] = Field(default_factory=list)
     prompt_file: str | None = None
     skills: list[str] = Field(default_factory=list)
     sandbox_env_skill_path: str | None = "./.sandbox_generated/skills/sandbox-environment-hint"
@@ -93,6 +101,31 @@ class SandboxConfig(BaseModel):
                 out.append({"name": name, "options": {str(k): str(v) for k, v in options.items()}})
             else:
                 raise TypeError("service item must be string or object")
+        return out
+
+    @field_validator("custom_install_commands", mode="before")
+    @classmethod
+    def _normalize_custom_install_commands(cls, value: Any) -> list[dict[str, str]]:
+        """Accept list[str] and list[{command, run_as}] for custom commands."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("custom_install_commands must be a list")
+        out: list[dict[str, str]] = []
+        for item in value:
+            if isinstance(item, str):
+                out.append({"command": item, "run_as": "agent"})
+                continue
+            if isinstance(item, dict):
+                command = item.get("command")
+                if not isinstance(command, str) or not command.strip():
+                    raise TypeError("custom_install_commands item.command must be non-empty string")
+                run_as = item.get("run_as", "agent")
+                if run_as not in {"root", "agent"}:
+                    raise TypeError("custom_install_commands item.run_as must be 'root' or 'agent'")
+                out.append({"command": command, "run_as": run_as})
+                continue
+            raise TypeError("custom_install_commands item must be string or object")
         return out
 
 

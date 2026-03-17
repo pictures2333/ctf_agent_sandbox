@@ -131,6 +131,15 @@ def apply_packages(config: SandboxConfig, context: BuildContext) -> None:
         context.pip_packages.update(group.pip)
 
 
+def apply_custom_install_commands(config: SandboxConfig, context: BuildContext) -> None:
+    """Append user-defined install commands to root/agent execution phases."""
+    for item in config.custom_install_commands:
+        if item.run_as == "root":
+            context.root_commands.append(item.command)
+        else:
+            context.agent_commands.append(item.command)
+
+
 def apply_prompt(config: SandboxConfig, context: BuildContext) -> None:
     """Mount prompt file as AGENTS.md inside the workspace when provided."""
     if config.prompt_file:
@@ -162,6 +171,7 @@ DEFAULT_PIPELINE: list[ModuleFunc] = [
     apply_background_services,
     apply_tools,
     apply_packages,
+    apply_custom_install_commands,
     apply_prompt,
     apply_skills,
 ]

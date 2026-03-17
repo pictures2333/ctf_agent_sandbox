@@ -19,7 +19,7 @@ def _service_mcp_terminal(config: SandboxConfig, context: BuildContext) -> None:
     context.startup_commands.append(
         f"(cd {container_path} "
         "&& uv sync "
-        f"&& uv run main.py --host 127.0.0.1 --port 8000 --path {container_path} "
+        f"&& uv run main.py --host 127.0.0.1 --port 8000 --path /mcp "
         "--workdir /home/agent/challenge --shell /bin/bash"
         ") > /tmp/mcp-terminal.log 2>&1 &"
     )

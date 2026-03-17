@@ -17,17 +17,17 @@ agent-cli-tools:
   - name: codex
     options:
       auth_host_path: ~/.codex/auth.json
-      config_host_path: ~/.codex/config.toml
+      config_host_path: ./agent_cli_tools/codex/config.toml
       prompt_filename: AGENTS.md
   - name: gemini
     options:
       auth_host_path: ~/.gemini/oauth_creds.json
-      config_host_path: ~/.gemini/settings.json
+      config_host_path: ./agent_cli_tools/gemini/settings.json
       prompt_filename: GEMINI.md
   - name: opencode
     options:
       auth_host_path: ~/.local/share/opencode/auth.json
-      config_host_path: ~/.config/opencode/opencode.json
+      config_host_path: ./agent_cli_tools/opencode/opencode.json
       prompt_filename: AGENTS.md
 packages:
   - name: Linux Userspace Pwn

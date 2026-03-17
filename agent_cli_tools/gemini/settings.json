@@ -1,0 +1,24 @@
+{
+  "general": {
+    "sessionRetention": {
+      "enabled": true,
+      "maxAge": "30d",
+      "warningAcknowledged": true
+    }
+  },
+  "ide": {
+    "hasSeenNudge": true,
+    "enabled": true
+  },
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal"
+    }
+  },
+  "mcpServers": {
+    "mcp_terminal": {
+      "httpUrl": "http://127.0.0.1:8000/mcp",
+      "timeout": 5000
+    }
+  }
+}

@@ -25,6 +25,13 @@ class PackageGroup(BaseModel):
     pip: list[str] = Field(default_factory=list)
 
 
+class ServiceConfig(BaseModel):
+    """One background service entry with per-service options."""
+
+    name: str
+    options: dict[str, str] = Field(default_factory=dict)
+
+
 class SandboxConfig(BaseModel):
     """Single source-of-truth object consumed by the assembler pipeline."""
 
@@ -32,10 +39,9 @@ class SandboxConfig(BaseModel):
 
     timezone: str = "Asia/Taipei"
     locale: LocaleConfig = Field(default_factory=LocaleConfig)
-    services: list[str] = Field(default_factory=list)
+    services: list[ServiceConfig] = Field(default_factory=list)
     ai_cli_tools: list[str] = Field(default_factory=list, alias="ai-cli-tools")
     packages: list[PackageGroup] = Field(default_factory=list)
-    service_options: dict[str, dict[str, str]] = Field(default_factory=dict)
     prompt_file: str | None = None
     skills: list[str] = Field(default_factory=list)
     sandbox_env_skill_path: str | None = "./.sandbox_generated/skills/sandbox-environment-hint"
@@ -64,6 +70,30 @@ class SandboxConfig(BaseModel):
         if isinstance(value, list):
             return [str(item) for item in value]
         raise TypeError("skills must be string or list of strings")
+
+    @field_validator("services", mode="before")
+    @classmethod
+    def _normalize_services(cls, value: Any) -> list[dict[str, Any]]:
+        """Accept both legacy list[str] and list[{name, options}] formats."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise TypeError("services must be a list")
+        out: list[dict[str, Any]] = []
+        for item in value:
+            if isinstance(item, str):
+                out.append({"name": item, "options": {}})
+            elif isinstance(item, dict):
+                name = item.get("name")
+                if not isinstance(name, str):
+                    raise TypeError("service item.name must be string")
+                options = item.get("options", {})
+                if not isinstance(options, dict):
+                    raise TypeError("service item.options must be object")
+                out.append({"name": name, "options": {str(k): str(v) for k, v in options.items()}})
+            else:
+                raise TypeError("service item must be string or object")
+        return out
 
 
 def parse_config(config: SandboxConfig | dict[str, Any]) -> SandboxConfig:

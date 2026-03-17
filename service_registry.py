@@ -29,7 +29,7 @@ def register_background_service(
 def apply_registered_background_services(config: SandboxConfig, context: Any) -> None:
     """Apply registered handlers for all enabled services."""
     for service in config.services:
-        handler = BACKGROUND_SERVICE_HANDLERS.get(service)
+        handler = BACKGROUND_SERVICE_HANDLERS.get(service.name)
         if handler is None:
             continue
         handler(config, context)
@@ -39,7 +39,7 @@ def collect_background_service_skills(config: SandboxConfig) -> list[str]:
     """Collect extra skill paths from enabled background service providers."""
     skill_paths: list[str] = []
     for service in config.services:
-        provider = BACKGROUND_SERVICE_SKILL_PROVIDERS.get(service)
+        provider = BACKGROUND_SERVICE_SKILL_PROVIDERS.get(service.name)
         if provider is None:
             continue
         skill_paths.extend(provider(config))
@@ -47,5 +47,8 @@ def collect_background_service_skills(config: SandboxConfig) -> list[str]:
 
 
 def get_service_options(config: SandboxConfig, service_name: str) -> dict[str, str]:
-    """Read normalized service-specific options from generic config map."""
-    return config.service_options.get(service_name, {})
+    """Read normalized service-specific options from services array."""
+    for service in config.services:
+        if service.name == service_name:
+            return service.options
+    return {}

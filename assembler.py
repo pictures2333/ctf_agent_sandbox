@@ -290,13 +290,14 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
             lines.append(f"- gem: {', '.join(group.gem)}")
         package_sections.append("\n".join(lines))
 
-    services = ", ".join(config.services) if config.services else "(none)"
+    service_names = [service.name for service in config.services]
+    services = ", ".join(service_names) if service_names else "(none)"
     tools = ", ".join(config.ai_cli_tools) if config.ai_cli_tools else "(none)"
     package_text = "\n\n".join(package_sections) if package_sections else "## name: Base\n- (no extra packages)"
     service_sections: list[str] = []
-    for service_name in config.services:
-        service_sections.append(f"## name: background-service:{service_name}")
-        options = config.service_options.get(service_name, {})
+    for service in config.services:
+        service_sections.append(f"## name: background-service:{service.name}")
+        options = service.options
         if options:
             for key, value in options.items():
                 service_sections.append(f"- {key}: {value}")

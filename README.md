@@ -57,8 +57,8 @@ ctf-agent-sandbox = { path = "../ctf_agent_sandbox" }
 Use [config.example.json](/home/p23/develope/Agent-CTF-Bot_I-love-suisei/src/ctf_agent_sandbox/config.example.json) as template.
 
 Key sections:
-- `services`: background services (`dockerd`, `mcp-terminal`)
-- `service_options`: per-service options (for `mcp-terminal`: `host_path`, `container_path`, `skill_path`)
+- `services`: background service entries with `name` + `options`
+  - for `mcp-terminal`, options include `host_path`, `container_path`, `skill_path`
 - background service plugins are managed under `background_services/`
 - `ai-cli-tools`: `codex`, `gemini`, `opencode`
 - `packages`: grouped by `name`
@@ -69,4 +69,4 @@ Key sections:
 
 - Shared skills come from `skills`.
 - Sandbox environment hint skill is auto-generated on each `build_image` and auto-mounted.
-- `mcp-terminal` skill is mounted only when `services` includes `mcp-terminal`.
+- `mcp-terminal` skill is mounted only when a `services` item has `name: mcp-terminal`.

@@ -9,16 +9,19 @@
     ]
   },
   "services": [
-    "dockerd",
-    "mcp-terminal"
-  ],
-  "service_options": {
-    "mcp-terminal": {
-      "host_path": "./mcp",
-      "container_path": "/mcp",
-      "skill_path": "./skills/mcp-terminal-operator"
+    {
+      "name": "dockerd",
+      "options": {}
+    },
+    {
+      "name": "mcp-terminal",
+      "options": {
+        "host_path": "./mcp",
+        "container_path": "/mcp",
+        "skill_path": "./skills/mcp-terminal-operator"
+      }
     }
-  },
+  ],
   "ai-cli-tools": [
     "codex",
     "gemini",

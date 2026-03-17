@@ -40,6 +40,14 @@ packages:
       - one_gadget
     npm: []
     pip: []
+  - name: Crypto
+    pacman:
+      - python-pycryptodome
+      - sagemath
+    yay: []
+    gem: []
+    npm: []
+    pip: []
 custom_install_commands:
   - command: cd ~ && git clone https://github.com/pwndbg/pwndbg.git && cd ~/pwndbg && yes | ./setup.sh
     run_as: agent
@@ -49,7 +57,7 @@ custom_install_commands:
       curl -SL https://github.com/docker/compose/releases/download/v5.0.1/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose && \
       chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
     run_as: agent
-prompt_file: ./prompt/sandbox.md
+prompt_file: ./prompt/AGENTS.md
 skills: []
 sandbox_env_skill_path: ./.sandbox_generated/skills/sandbox-environment-hint
 image_name: agent-sandbox

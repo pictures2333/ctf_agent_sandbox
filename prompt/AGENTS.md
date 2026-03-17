@@ -55,35 +55,6 @@
 - exploit 需要使用 pwntools 編寫
 - 所有檔案都需要編寫在當前工作目錄下
 
-## Environment
-
-OS: Arch Linux
-Package manager:
-- pacman
-- yay
-User: agent (sudo no passwd)
-
-## Tools
-
-此環境提供以下工具：
-- commands
-    - openbsd-netcat
-    - objdump
-    - checksec
-    - ROPgadget
-    - one_gadget
-    - gdb (pwndbg)
-    - readelf
-    - python3 (with uv as package manager)
-    - strings
-    - seccomp-tools
-    - nodejs (with npm as package manager)
-    - docker
-    - docker compose
-- mcp servers
-    - Ghidra MCP
-    - MCP Terminal (搭配 ``skills/mcp-terminal-operator`` 使用)
-
 ### Constraints
 
 - 執行命令請一律使用 ``MCP Terminal`` 進行操作

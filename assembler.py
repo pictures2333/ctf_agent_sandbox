@@ -288,7 +288,7 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
     # Build package summary grouped by configured package group names.
     package_sections: list[str] = []
     for group in config.packages:
-        lines: list[str] = [f"## name: {group.name}"]
+        lines: list[str] = [f"### name: {group.name}"]
         if group.pacman:
             lines.append(f"- pacman: {', '.join(group.pacman)}")
         if group.yay:
@@ -306,26 +306,26 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
     services = ", ".join(service_names) if service_names else "(none)"
     tool_names = [tool.name for tool in config.agent_cli_tools]
     tools = ", ".join(tool_names) if tool_names else "(none)"
-    package_text = "\n\n".join(package_sections) if package_sections else "## name: Base\n- (no extra packages)"
+    package_text = "\n\n".join(package_sections) if package_sections else "### name: Base\n- (no extra packages)"
     service_sections: list[str] = []
     for service in config.services:
-        service_sections.append(f"## name: background-service:{service.name}")
+        service_sections.append(f"### name: background-service:{service.name}")
         options = service.options
         if options:
             for key, value in options.items():
                 service_sections.append(f"- {key}: {value}")
         else:
             service_sections.append("- options: (none)")
-    service_text = "\n".join(service_sections) if service_sections else "## name: background-service\n- (none)"
+    service_text = "\n".join(service_sections) if service_sections else "### name: background-service\n- (none)"
     tool_sections: list[str] = []
     for tool in config.agent_cli_tools:
-        tool_sections.append(f"## name: agent-cli-tool:{tool.name}")
+        tool_sections.append(f"### name: agent-cli-tool:{tool.name}")
         if tool.options:
             for key, value in tool.options.items():
                 tool_sections.append(f"- {key}: {value}")
         else:
             tool_sections.append("- options: (none)")
-    tool_text = "\n".join(tool_sections) if tool_sections else "## name: agent-cli-tool\n- (none)"
+    tool_text = "\n".join(tool_sections) if tool_sections else "### name: agent-cli-tool\n- (none)"
 
     # Emit final markdown content from skill template.
     content = render_template(

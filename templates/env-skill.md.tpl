@@ -1,25 +1,30 @@
 ---
 name: sandbox-environment-hint
-description: Auto-generated sandbox environment summary. Use this to understand installed tools and service topology before operating.
+description: Summarizes the current sandbox runtime, enabled background services, installed packages/tools, and operational rules before execution.
 ---
 
 # Sandbox Environment Hint
 
 ## Runtime Summary
+- os: Arch Linux
 - timezone: {{TIMEZONE}}
 - locale: {{LOCALE}}
 - services: {{SERVICES}}
-- agent_cli_tools: {{AGENT_CLI_TOOLS}}
 - workspace: {{WORKSPACE}}
 
-## Agent CLI Tools
-{{TOOL_SECTION}}
-
-## Built-in Notes
-- This skill is generated automatically during `assemble` and `build_image`.
-- Service-specific skills are mounted only when their service plugin is enabled.
-
 ## Background Services
+
 {{SERVICE_SECTION}}
 
+## Packages, Modules and Tools
+
 {{PACKAGE_SECTION}}
+
+## Rules (Must follow)
+
+- Search package information from [ArchLinux packages](https://archlinux.org/packages/) or [AUR](https://aur.archlinux.org/packages) before install any packages via pacman or yay.
+- Python module installation rules:
+    - global: use pacman or yay
+    - project: use uv (python-uv)
+- If the required package is not available in the environment, install it yourself.
+- Sudo is available and no password needed.

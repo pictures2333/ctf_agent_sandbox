@@ -37,7 +37,8 @@ Dockerfile
 config.json
 session/
 *.log
-.sandbox_state.json
+.state.json
+.sandbox_workdir/
 .sandbox_generated/
 
 # Reference-only materials

@@ -56,8 +56,7 @@ def test_assemble_adds_workspace_and_startup_mounts_and_dedupes() -> None:
 
 
 def test_assemble_and_write_outputs_files_and_state(tmp_path: Path) -> None:
-    output_dir = tmp_path / "out"
-    state_file = tmp_path / "state.json"
+    work_dir = tmp_path / "work"
     startup_host = tmp_path / "runtime" / "startup.sh"
     skill_dir = tmp_path / "skills" / "env-hint"
     config = SandboxConfig.model_validate(
@@ -67,11 +66,11 @@ def test_assemble_and_write_outputs_files_and_state(tmp_path: Path) -> None:
             "sandbox_env_skill_path": str(skill_dir),
         }
     )
-    result = assembler.assemble_and_write(config, output_dir=output_dir, state_file=state_file)
-    assert (output_dir / "Dockerfile").exists()
-    assert (output_dir / "script" / "startup.sh").exists()
+    result = assembler.assemble_and_write(config, work_dir=work_dir)
+    assert (work_dir / "Dockerfile").exists()
+    assert (work_dir / "script" / "startup.sh").exists()
     assert startup_host.exists()
-    payload = json.loads(state_file.read_text(encoding="utf-8"))
+    payload = json.loads((work_dir / ".state.json").read_text(encoding="utf-8"))
     assert payload["image_id"] is None
     assert payload["run_params"] == result.container_options
 
@@ -131,18 +130,18 @@ class _FakeDockerClient:
 def test_build_image_writes_state_and_returns_image_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fake = _FakeDockerClient("img-fallback", "ctr-1", [{"aux": {"ID": "img-from-log"}}])
     monkeypatch.setattr(assembler.docker, "from_env", lambda: fake)
-    monkeypatch.setattr(assembler, "STATE_FILE", tmp_path / ".sandbox_state.json")
     startup_host = tmp_path / "runtime" / "startup.sh"
     skill_dir = tmp_path / "skills" / "env-hint"
+    work_dir = tmp_path / "work"
     config = SandboxConfig.model_validate(
         {
             "startup_script_host_path": str(startup_host),
             "sandbox_env_skill_path": str(skill_dir),
         }
     )
-    image_id = assembler.build_image(config, tag="custom-tag", verbose=False)
+    image_id = assembler.build_image(config, tag="custom-tag", verbose=False, work_dir=work_dir)
     assert image_id == "img-from-log"
-    payload = json.loads((tmp_path / ".sandbox_state.json").read_text(encoding="utf-8"))
+    payload = json.loads((work_dir / ".state.json").read_text(encoding="utf-8"))
     assert payload["image_id"] == "img-from-log"
     assert startup_host.exists()
 
@@ -150,7 +149,9 @@ def test_build_image_writes_state_and_returns_image_id(monkeypatch: pytest.Monke
 def test_run_container_reads_state_and_returns_container_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fake = _FakeDockerClient("img", "ctr-xyz", [])
     monkeypatch.setattr(assembler.docker, "from_env", lambda: fake)
-    state_file = tmp_path / "state.json"
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    state_file = work_dir / ".state.json"
     state_file.write_text(
         json.dumps(
             {
@@ -165,17 +166,17 @@ def test_run_container_reads_state_and_returns_container_id(monkeypatch: pytest.
         ),
         encoding="utf-8",
     )
-    container_id = assembler.run_container(state_file=state_file)
+    container_id = assembler.run_container(work_dir=work_dir)
     assert container_id == "ctr-xyz"
     assert fake.containers.last_run_kwargs is not None
     assert fake.containers.last_run_kwargs["image_ref"] == "img-1"
 
 
 def test_run_container_raises_when_image_id_missing(tmp_path: Path) -> None:
-    state_file = tmp_path / "state.json"
+    state_file = tmp_path / ".state.json"
     state_file.write_text(json.dumps({"image_id": None, "run_params": {}}), encoding="utf-8")
     with pytest.raises(ValueError):
-        assembler.run_container(state_file=state_file)
+        assembler.run_container(work_dir=tmp_path)
 
 
 def test_stop_container_calls_stop_and_remove(monkeypatch: pytest.MonkeyPatch) -> None:

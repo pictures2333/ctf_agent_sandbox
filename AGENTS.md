@@ -44,8 +44,9 @@
 
 ## Build, Test, and Development Commands
 - `uv sync` 安裝依賴。
-- `uv run ctf_agent_sandbox assemble --config config.example.yaml --output-dir .` 生成組裝檔案。
-- `uv run -m ctf_agent_sandbox assemble --config config.example.yaml --output-dir .` 以 module 方式執行。
+- `uv run ctf_agent_sandbox assemble --work-dir ./test2` 以記憶體模式組裝並輸出 JSON。
+- `uv run ctf_agent_sandbox assemble-and-write --work-dir ./test2` 生成組裝檔案。
+- `uv run -m ctf_agent_sandbox assemble-and-write --work-dir ./test2` 以 module 方式執行。
 - `python -m compileall -q .` 做最小語法檢查。
 
 ## Coding Style, Naming Conventions and Code Review Rules

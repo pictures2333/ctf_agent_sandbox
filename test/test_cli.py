@@ -31,38 +31,72 @@ def test_load_config_non_object_yaml_raises(tmp_path: Path) -> None:
 def test_build_parser_has_expected_subcommands() -> None:
     parser = cli._build_parser()
     subparsers_action = next(a for a in parser._actions if getattr(a, "dest", None) == "command")
-    assert set(subparsers_action.choices) == {"assemble", "build-image", "run-container", "stop-container"}
+    assert set(subparsers_action.choices) == {
+        "assemble",
+        "assemble-and-write",
+        "build-image",
+        "run-container",
+        "stop-container",
+    }
 
 
-def test_main_dispatch_assemble(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_main_dispatch_assemble(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        cli,
+        "assemble",
+        lambda _config, work_dir: type(
+            "R",
+            (),
+            {
+                "dockerfile": "FROM x",
+                "startup_script": "#!/bin/bash",
+                "container_options": {"a": 1},
+            },
+        )(),
+    )
+    code = cli.main(["assemble", "--config", str(config_path), "--work-dir", str(tmp_path)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert '"dockerfile"' in out
+    assert '"container_options"' in out
+
+
+def test_main_dispatch_assemble_and_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("{}", encoding="utf-8")
     called: dict[str, object] = {}
 
-    def _fake_assemble(config, output_dir, state_file):
-        called["output_dir"] = output_dir
-        called["state_file"] = state_file
+    def _fake_assemble_and_write(config, work_dir):
+        called["work_dir"] = work_dir
         called["config"] = config
 
-    monkeypatch.setattr(cli, "assemble_and_write", _fake_assemble)
-    code = cli.main(["assemble", "--config", str(config_path), "--output-dir", "out", "--state-file", "s.json"])
+    monkeypatch.setattr(cli, "assemble_and_write", _fake_assemble_and_write)
+    code = cli.main(["assemble-and-write", "--config", str(config_path), "--work-dir", str(tmp_path)])
     assert code == 0
-    assert called["output_dir"] == "out"
-    assert called["state_file"] == "s.json"
+    assert called["work_dir"] == str(tmp_path)
 
 
 def test_main_dispatch_build_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(cli, "build_image", lambda config, tag, verbose: "img-1")
-    code = cli.main(["build-image", "--config", str(config_path), "--tag", "x", "--verbose"])
+    called: dict[str, object] = {}
+
+    def _fake_build(config, tag, verbose, work_dir):
+        called["work_dir"] = work_dir
+        return "img-1"
+
+    monkeypatch.setattr(cli, "build_image", _fake_build)
+    code = cli.main(["build-image", "--config", str(config_path), "--work-dir", str(tmp_path), "--tag", "x", "--verbose"])
     assert code == 0
+    assert called["work_dir"] == str(tmp_path)
     assert "img-1" in capsys.readouterr().out
 
 
 def test_main_dispatch_run_container(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(cli, "run_container", lambda state_file: "ctr-1")
-    code = cli.main(["run-container", "--state-file", "s.json"])
+    monkeypatch.setattr(cli, "run_container", lambda work_dir: "ctr-1")
+    code = cli.main(["run-container", "--work-dir", "w"])
     assert code == 0
     assert "ctr-1" in capsys.readouterr().out
 

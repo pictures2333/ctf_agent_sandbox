@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import yaml
 
-from .assembler import STATE_FILE, assemble_and_write, build_image, run_container, stop_container
+from .assembler import (
+    DEFAULT_CONFIG_FILE,
+    DEFAULT_WORK_DIR,
+    assemble,
+    assemble_and_write,
+    build_image,
+    run_container,
+    stop_container,
+)
 from .models import SandboxConfig
 
 
@@ -35,28 +44,44 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CTF sandbox assembler CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Assemble command: generate local artifacts and state template.
-    assemble_parser = subparsers.add_parser("assemble", help="Generate Dockerfile/startup/state template")
-    assemble_parser.add_argument("--config", default="config.yaml", help="Path to YAML config object")
-    assemble_parser.add_argument("--output-dir", default=".", help="Where to write generated files")
+    # Assemble command: build artifacts in memory and print JSON.
+    assemble_parser = subparsers.add_parser("assemble", help="Assemble in memory and print JSON result")
+    assemble_parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Path to YAML config object")
     assemble_parser.add_argument(
-        "--state-file",
-        default=str(STATE_FILE),
-        help="Path to write state file template (image_id + run_params)",
+        "--work-dir",
+        default=str(DEFAULT_WORK_DIR),
+        help="Workspace directory for config and outputs",
+    )
+
+    # Assemble-and-write command: generate local artifacts and state template.
+    assemble_write_parser = subparsers.add_parser(
+        "assemble-and-write",
+        help="Generate Dockerfile/startup/state template",
+    )
+    assemble_write_parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Path to YAML config object")
+    assemble_write_parser.add_argument(
+        "--work-dir",
+        default=str(DEFAULT_WORK_DIR),
+        help="Workspace directory for config and outputs",
     )
 
     # Build-image command: build Docker image and persist runtime state.
     build_parser = subparsers.add_parser("build-image", help="Build image and persist package state file")
-    build_parser.add_argument("--config", default="config.yaml", help="Path to YAML config object")
+    build_parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Path to YAML config object")
+    build_parser.add_argument(
+        "--work-dir",
+        default=str(DEFAULT_WORK_DIR),
+        help="Workspace directory for config and outputs",
+    )
     build_parser.add_argument("--tag", default=None, help="Optional docker image tag override")
     build_parser.add_argument("--verbose", action="store_true", help="Print Docker build logs")
 
     # Run-container command: run from previously persisted state.
     run_parser = subparsers.add_parser("run-container", help="Run container and print container id")
     run_parser.add_argument(
-        "--state-file",
-        default=str(STATE_FILE),
-        help="Path to state file for image id and run params",
+        "--work-dir",
+        default=str(DEFAULT_WORK_DIR),
+        help="Workspace directory for config and outputs",
     )
 
     # Stop-container command: stop/remove one container by id.
@@ -75,19 +100,35 @@ def main(argv: list[str] | None = None) -> int:
     # Dispatch `assemble` command.
     if args.command == "assemble":
         config = _load_config(args.config)
-        assemble_and_write(config, output_dir=args.output_dir, state_file=args.state_file)
+        result = assemble(config, work_dir=args.work_dir)
+        print(
+            json.dumps(
+                {
+                    "dockerfile": result.dockerfile,
+                    "startup_script": result.startup_script,
+                    "container_options": result.container_options,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    # Dispatch `assemble-and-write` command.
+    if args.command == "assemble-and-write":
+        config = _load_config(args.config)
+        assemble_and_write(config, work_dir=args.work_dir)
         return 0
 
     # Dispatch `build-image` command.
     if args.command == "build-image":
         config = _load_config(args.config)
-        image_id = build_image(config=config, tag=args.tag, verbose=args.verbose)
+        image_id = build_image(config=config, tag=args.tag, verbose=args.verbose, work_dir=args.work_dir)
         print(image_id)
         return 0
 
     # Dispatch `run-container` command.
     if args.command == "run-container":
-        container_id = run_container(state_file=args.state_file)
+        container_id = run_container(work_dir=args.work_dir)
         print(container_id)
         return 0
 

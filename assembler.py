@@ -24,7 +24,9 @@ from .utils.runtime import (
 )
 from .utils.template import render_template
 
-STATE_FILE = Path(__file__).resolve().parent / ".sandbox_state.json"
+STATE_FILE = Path(".state.json")
+DEFAULT_CONFIG_FILE = "config.yaml"
+DEFAULT_WORK_DIR = Path(".sandbox_workdir")
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 DOCKERFILE_TEMPLATE_FILE = TEMPLATE_DIR / "Dockerfile.tpl"
 STARTUP_SCRIPT_TEMPLATE_FILE = TEMPLATE_DIR / "startup.sh.tpl"
@@ -42,12 +44,17 @@ class AssemblyResult:
 
 def assemble(
     config: SandboxConfig | dict[str, Any],
+    work_dir: str | Path = DEFAULT_WORK_DIR,
 ) -> AssemblyResult:
     """Build in-memory artifacts from a config object."""
+    parsed = _prepare_assembly_config(config, work_dir=work_dir)
+    return _assemble_from_parsed(parsed)
+
+
+def _assemble_from_parsed(parsed: SandboxConfig) -> AssemblyResult:
+    """Build in-memory artifacts from one prepared config object."""
     # Bootstrap built-in plugin registries before executing the assembly pipeline.
     ensure_builtin_background_services_registered()
-    # Normalize raw dict/object input into a validated config model.
-    parsed = parse_config(config)
     context = BuildContext()
 
     # Execute all pipeline modules in order to populate build context.
@@ -70,20 +77,17 @@ def assemble(
 
 def assemble_and_write(
     config: SandboxConfig | dict[str, Any],
-    output_dir: str | Path = ".",
-    state_file: str | Path = STATE_FILE,
+    work_dir: str | Path = DEFAULT_WORK_DIR,
 ) -> AssemblyResult:
     """Assemble full artifacts and write files/state without building image."""
     # Parse config and ensure generated environment skill is ready.
-    parsed = _prepare_assembly_config(config)
-    result = assemble(config=parsed)
+    parsed = _prepare_assembly_config(config, work_dir=work_dir)
+    result = _assemble_from_parsed(parsed)
+    work_path = Path(work_dir).expanduser().resolve()
+    work_path.mkdir(parents=True, exist_ok=True)
 
-    # Write generated Docker build artifacts to target output directory.
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    (out_dir / "Dockerfile").write_text(result.dockerfile, encoding="utf-8")
-    startup_path = out_dir / "script" / "startup.sh"
+    (work_path / "Dockerfile").write_text(result.dockerfile, encoding="utf-8")
+    startup_path = work_path / "script" / "startup.sh"
     startup_path.parent.mkdir(parents=True, exist_ok=True)
     startup_path.write_text(result.startup_script, encoding="utf-8")
     startup_path.chmod(0o755)
@@ -95,7 +99,7 @@ def assemble_and_write(
         "image_id": None,
         "run_params": result.container_options,
     }
-    Path(state_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _state_file_path(work_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return result
 
 
@@ -103,11 +107,14 @@ def build_image(
     config: SandboxConfig | dict[str, Any],
     tag: str | None = None,
     verbose: bool = False,
+    work_dir: str | Path = DEFAULT_WORK_DIR,
 ) -> str:
     """Build image via Docker SDK and persist image/config state."""
     # Parse config and ensure generated environment skill is ready.
-    parsed = _prepare_assembly_config(config)
-    result = assemble(parsed)
+    parsed = _prepare_assembly_config(config, work_dir=work_dir)
+    result = _assemble_from_parsed(parsed)
+    work_path = Path(work_dir).expanduser().resolve()
+    work_path.mkdir(parents=True, exist_ok=True)
 
     # Materialize temporary Docker build context and invoke Docker SDK image build.
     with tempfile.TemporaryDirectory(prefix="ctf-sandbox-build-") as tmp_dir:
@@ -139,16 +146,17 @@ def build_image(
         "image_id": image_id,
         "run_params": result.container_options,
     }
-    STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _state_file_path(work_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return image_id
 
 
 def run_container(
-    state_file: str | Path = STATE_FILE,
+    work_dir: str | Path = DEFAULT_WORK_DIR,
 ) -> str:
     """Run a container from stored state and return container id."""
     # Resolve image id and run options from persisted state.
-    state = load_state(state_file)
+    work_path = Path(work_dir).expanduser().resolve()
+    state = load_state(_state_file_path(work_path))
     image_ref = state["image_id"]
     opts = state["run_params"]
     if not isinstance(image_ref, str) or not image_ref:
@@ -261,9 +269,13 @@ def render_container_options(
     }
 
 
-def _prepare_assembly_config(config: SandboxConfig | dict[str, Any]) -> SandboxConfig:
+def _prepare_assembly_config(
+    config: SandboxConfig | dict[str, Any],
+    work_dir: str | Path = DEFAULT_WORK_DIR,
+) -> SandboxConfig:
     """Normalize config and apply generated sandbox environment skill path."""
     parsed = parse_config(config)
+    _resolve_output_paths(parsed, work_dir)
     generated_skill_path = _generate_sandbox_env_skill(parsed)
     if generated_skill_path:
         parsed.sandbox_env_skill_path = generated_skill_path
@@ -343,3 +355,26 @@ def _generate_sandbox_env_skill(config: SandboxConfig) -> str | None:
     )
     skill_file.write_text(content, encoding="utf-8")
     return str(skill_dir)
+
+
+def _state_file_path(work_dir: Path) -> Path:
+    """Resolve runtime state file path from one work directory."""
+    return work_dir / STATE_FILE
+
+
+def _resolve_output_paths(config: SandboxConfig, work_dir: str | Path) -> None:
+    """Resolve only generated output paths against one shared work directory."""
+    root = Path(work_dir).expanduser().resolve()
+
+    # Output artifacts that this tool writes should live under work_dir.
+    config.startup_script_host_path = _resolve_path(config.startup_script_host_path, root)
+    if config.sandbox_env_skill_path:
+        config.sandbox_env_skill_path = _resolve_path(config.sandbox_env_skill_path, root)
+
+
+def _resolve_path(raw_path: str, root: Path) -> str:
+    """Resolve one path using work directory when given a relative path."""
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    return str((root / candidate).resolve())
